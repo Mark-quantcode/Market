@@ -2,7 +2,11 @@ import os
 import yfinance as yf
 from supabase import create_client
 
-sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+url = os.environ["SUPABASE_URL"].strip().split("/rest")[0].rstrip("/")
+key = os.environ["SUPABASE_SERVICE_KEY"].strip()
+print("URL check:", repr(url[:14]), "...", repr(url[-12:]), "length", len(url))
+
+sb = create_client(url, key)
 instruments = sb.table("instruments").select("id,symbol").execute().data
 
 rows = []
