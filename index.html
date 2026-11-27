@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nightly Bot</title>
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0; --dim:#94a3b8; --up:#34d399; --down:#f87171; --acc:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px 16px 40px; max-width:640px; margin-inline:auto; }
+  h1 { font-size:18px; margin:0; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:24px 0 8px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  button { background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font:inherit; }
+  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:10px; }
+  .big { font-size:34px; font-weight:700; }
+  .dim { color:var(--dim); font-size:13px; }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .row { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:99px; background:#0b3a53; color:var(--acc); }
+  .tag.morning { background:#4a3a0b; color:#fbbf24; }
+  .warn { font-size:12px; color:var(--dim); border-left:3px solid var(--line); padding-left:10px; margin-top:10px; }
+  svg { width:100%; height:120px; display:block; }
+  .err { color:var(--down); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .chips button { padding:5px 10px; font-size:13px; border-radius:99px; }
+  .chips button.on { background:#0b3a53; border-color:var(--acc); color:var(--acc); }
+  .key { font-size:12px; display:flex; gap:12px; margin-top:4px; }
+  .tabs { display:flex; gap:6px; margin-top:14px; position:sticky; top:0; background:var(--bg); padding:6px 0; z-index:2; }
+  .tabs button { flex:1; border-radius:99px; }
+  .tabs button.on { background:#0b3a53; border-color:var(--acc); color:var(--acc); }
+  details { background:var(--card); border-radius:14px; padding:12px 14px; margin-bottom:8px; }
+  summary { cursor:pointer; font-weight:600; }
+  details .body { margin-top:8px; color:var(--txt); }
+  details .body p, details .body ul { margin:6px 0; }
+  details .body ul { padding-left:18px; }
+  details.done summary::after { content:" ✓"; color:var(--up); }
+  details label { display:block; margin-top:10px; font-size:13px; color:var(--dim); }
+  .bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin:6px 0 12px; }
+  .bar i { display:block; height:100%; background:var(--up); }
+  .gauge { font-size:34px; font-weight:700; }
+  input[type=number] { width:100%; background:var(--bg); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; margin:6px 0 8px; }
+  .act { width:100%; padding:12px; font-weight:700; margin-top:6px; }
+  .act.buy { background:#064e3b; border-color:var(--up); color:var(--up); }
+  .mini { padding:4px 10px; font-size:12px; border-radius:99px; margin-left:4px; }
+  .mini.sell { border-color:var(--down); color:var(--down); }
+  #simReset { margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="top"><h1>Nightly Bot <span class="dim">· paper trading</span></h1><button id="refresh">Refresh</button></div>
+<nav class="tabs"><button data-tab="markets" class="on">Markets</button><button data-tab="practice">Practice</button><button data-tab="bot">Bot</button><button data-tab="learn">Learn</button></nav>
+<section id="tab-markets">
+<h2>Live prices <span class="dim" id="liveStatus"></span></h2>
+<div class="card" id="live"><p class="dim">Loading prices…</p></div>
+<h2>Price chart</h2>
+<div class="card" id="chartBox"><p class="dim">Loading chart…</p></div>
+<h2>Market sentiment</h2>
+<div class="card" id="sentiment"><p class="dim">Loading sentiment…</p></div>
+<h2>Markets open now</h2>
+<div class="card" id="sessions"></div>
+</section>
+<section id="tab-practice" hidden>
+<h2>Practice trading <span class="dim">· fake money, live prices</span></h2>
+<div class="card" id="simTop"></div>
+<h2>Account value over time</h2>
+<div class="card" id="simEqChart"></div>
+<h2>Trade</h2>
+<div class="card" id="simForm"></div>
+<h2>Your positions</h2>
+<div class="card" id="simPos"></div>
+<h2>History</h2>
+<div class="card" id="simHist"></div>
+<button id="simReset">Reset fake balance</button>
+<div class="warn">Practice only. Every buy and sell costs a 0.1% fee plus 0.05% slippage (you pay a little above the live price and sell a little below it). No real money is used and nothing is sent to any exchange. Your fake balance is saved in this browser on this device only. Real trading has extra costs and risks that this cannot show.</div>
+</section>
+<section id="tab-bot" hidden>
+<div id="jpy"></div>
+<div id="app"><p class="dim">Loading…</p></div>
+</section>
+<section id="tab-learn" hidden>
+<div id="learn"></div>
+</section>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+const signed = (n) => (n >= 0 ? '+' : '-') + '$' + Math.abs(n).toFixed(2);
+const cls = (n) => (n >= 0 ? 'up' : 'down');
+const when = (iso) => new Date(iso).toLocaleString(undefined, {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+
+function chart(runs) {
+  if (runs.length < 2) return '<p class="dim">The chart appears after the second run.</p>';
+  const v = runs.map((r) => r.equity), min = Math.min(...v), max = Math.max(...v), span = max - min || 1;
+  const pts = v.map((y, i) => `${(i / (v.length - 1)) * 300},${110 - ((y - min) / span) * 100}`).join(' ');
+  const up = v[v.length - 1] >= v[0];
+  return `<svg viewBox="0 0 300 120" preserveAspectRatio="none" role="img" aria-label="Equity over runs">
+    <polyline points="${pts}" fill="none" stroke="${up ? '#34d399' : '#f87171'}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    <div class="row dim"><span>${money(min)}</span><span>${money(max)}</span></div>`;
+}
+
+function render(r) {
+  const lr = r.last_run, accts = Object.values(r.accounts);
+  const runs = r.runs.slice().reverse().slice(0, 12);
+  const bt = Object.entries(r.backtest);
+  $('#app').innerHTML = `
+    <div class="card">
+      <div class="dim">Paper equity · last run ${esc(when(lr.ts))} <span class="tag ${esc(lr.label)}">${esc(lr.label)}</span></div>
+      <div class="big">${money(r.equity)}</div>
+      <div><span class="${cls(r.return_pct)}">${r.return_pct >= 0 ? '+' : ''}${r.return_pct}%</span> <span class="dim">since ${esc(when(r.started))} · last run <span class="${cls(lr.change)}">${signed(lr.change)}</span></span></div>
+      ${chart(r.runs)}
+      ${lr.errors && lr.errors.length ? `<p class="err">Problem in last run: ${esc(lr.errors.join('; '))}</p>` : ''}
+    </div>
+
+    <h2>Run history</h2>
+    <div class="card">${runs.map((x) => `<div class="row"><span><span class="tag ${esc(x.label)}">${esc(x.label)}</span> <span class="dim">${esc(when(x.ts))}</span></span><span>${x.new_trades} trades · <span class="${cls(x.change)}">${signed(x.change)}</span></span></div>`).join('')}</div>
+
+    <h2>Strategies (live paper)</h2>
+    <div class="card">${accts.map((a) => `<div class="row"><span>${esc(a.name)}<br><span class="dim">${esc(a.symbol)} · ${a.trades} trades${a.win_rate != null ? ' · ' + a.win_rate + '% wins' : ''}${a.open ? ' · open ' + esc(a.open.side) : ''}</span></span><span class="${cls(a.equity - 1000)}">${money(a.equity)}</span></div>`).join('')}</div>
+
+    <h2>Latest trades</h2>
+    <div class="card">${r.trades.length ? r.trades.slice().reverse().slice(0, 15).map((t) => `<div class="row"><span>${esc(t.key.replace('|', ' · '))}<br><span class="dim">${esc(t.side)} · ${esc(t.reason)} · ${esc(when(new Date(t.exit_ts).toISOString()))}</span></span><span class="${cls(t.pnl)}">${signed(t.pnl)}</span></div>`).join('') : '<p class="dim">No finished trades yet. That is normal early on, these strategies trade rarely.</p>'}</div>
+
+    <h2>Backtest on recent history</h2>
+    <div class="card">${bt.map(([k, b]) => `<div class="row"><span>${esc(k.replace('|', ' · '))}<br><span class="dim">${b.trades} trades${b.win_rate != null ? ' · ' + b.win_rate + '% wins' : ''} · ${b.days} days</span></span><span class="${cls(b.return_pct)}">${b.return_pct >= 0 ? '+' : ''}${b.return_pct}%</span></div>`).join('')}
+      <div class="warn">Backtests only show what would have happened in the past. A few weeks of data is too little to trust, so keep paper trading before you risk any real money.</div></div>
+    <p class="dim">Paper money only. Updated ${esc(when(r.updated))}.</p>`;
+}
+
+/* ---------- live prices + market sessions ---------- */
+const MAJORS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
+const MEMES = ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT', 'BONKUSDT', 'WIFUSDT', 'FLOKIUSDT'];
+const WATCH = MAJORS.concat(MEMES);
+const SESSIONS = [['Sydney', 22, 7], ['Tokyo', 0, 9], ['London', 8, 17], ['New York', 13, 22]]; // UTC hours, standard time
+let REPORT = null, PRICES = {}, LIVE_OK = null, LIVE_AT = null;
+
+const px = (p) => p >= 1000 ? p.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toFixed(8);
+const localHour = (h) => new Date(Date.UTC(2026, 0, 1, h)).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+function forexClosedForWeekend(d) {
+  const day = d.getUTCDay(), hr = d.getUTCHours() + d.getUTCMinutes() / 60;
+  return (day === 5 && hr >= 22) || day === 6 || (day === 0 && hr < 22);
+}
+function sessionOpen(s, d) {
+  if (forexClosedForWeekend(d)) return false;
+  const hr = d.getUTCHours() + d.getUTCMinutes() / 60, a = s[1], b = s[2];
+  return a < b ? hr >= a && hr < b : hr >= a || hr < b;
+}
+
+function paintTicks() {
+  const rowsFor = (list) => list.filter((s) => PRICES[s]).map((s) => {
+    const q = PRICES[s], hot = q.tick && Date.now() - q.tick < 700 && q.dir;
+    return `<div class="row"><span>${esc(s.replace('USDT', ''))}<span class="dim"> / USDT</span></span><span><span class="${hot ? (q.dir > 0 ? 'up' : 'down') : ''}">${px(q.p)}</span> <span class="${cls(q.ch)}">${q.ch >= 0 ? '+' : ''}${q.ch.toFixed(2)}%</span></span></div>`;
+  }).join('');
+  const majorRows = rowsFor(MAJORS), memeRows = rowsFor(MEMES);
+  const rows = majorRows + (memeRows ? '<div class="dim" style="margin-top:10px">Meme coins (very volatile)</div>' + memeRows : '');
+  let open = '';
+  if (REPORT) {
+    const list = Object.values(REPORT.accounts).filter((a) => a.open && PRICES[a.symbol]);
+    open = `<div class="dim" style="margin-top:10px">Open paper trades</div>` + (list.length ? list.map((a) => {
+      const d = a.open.side === 'long' ? 1 : -1, pct = ((PRICES[a.symbol].p - a.open.entry) / a.open.entry) * 100 * d;
+      return `<div class="row"><span>${esc(a.name)}<br><span class="dim">${esc(a.symbol)} · ${esc(a.open.side)} from ${px(a.open.entry)}</span></span><span class="${cls(pct)}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span></div>`;
+    }).join('') : '<p class="dim">None right now.</p>');
+  }
+  $('#live').innerHTML = (rows || '<p class="dim">No prices yet.</p>') + open;
+  $('#liveStatus').textContent = WS_OK ? '· live, every trade' : LIVE_OK === false ? '· cannot reach price feed, retrying' : LIVE_AT ? '· updates every 5s' : '';
+}
+
+function paintSessions() {
+  const now = new Date(), weekend = forexClosedForWeekend(now);
+  $('#sessions').innerHTML =
+    `<div class="row"><span>Crypto (Binance)</span><span class="up">Open 24/7</span></div>` +
+    `<div class="row"><span>Deriv synthetics</span><span class="up">Open 24/7</span></div>` +
+    SESSIONS.map((s) => {
+      const o = sessionOpen(s, now);
+      return `<div class="row"><span>${s[0]} forex<br><span class="dim">${localHour(s[1])} - ${localHour(s[2])} your time</span></span><span class="${o ? 'up' : 'down'}">${o ? 'Open' : 'Closed'}</span></div>`;
+    }).join('') +
+    `<div class="warn">${weekend ? 'Forex is closed for the weekend. ' : ''}Session hours are standard times and shift by an hour with daylight saving in Europe and the US.</div>`;
+}
+
+function paintLive() { paintTicks(); paintSessions(); paintSentiment(); }
+
+async function pull() {
+  if (document.hidden) return;
+  try {
+    const url = 'https://data-api.binance.vision/api/v3/ticker/24hr?symbols=' + encodeURIComponent(JSON.stringify(WATCH));
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    (await res.json()).forEach((x) => {
+      const old = PRICES[x.symbol] || {};
+      PRICES[x.symbol] = Object.assign(old, {p: WS_OK && old.tick ? old.p : +x.lastPrice, ch: +x.priceChangePercent});
+    });
+    LIVE_OK = true; LIVE_AT = new Date();
+  } catch (e) { LIVE_OK = false; }
+  paintLive();
+}
+
+/* ---------- live ticks: every trade streamed from Binance over a WebSocket ---------- */
+let WS = null, WS_OK = false, WS_TRY = 0, WS_DIRTY = false, WS_CH_DIRTY = false, WS_LAST = 0;
+const WS_HOSTS = ['wss://data-stream.binance.vision', 'wss://stream.binance.com:9443'];
+
+function connectWS() {
+  try {
+    const host = WS_HOSTS[WS_TRY % WS_HOSTS.length];
+    const sock = new WebSocket(host + '/stream?streams=' + WATCH.map((s) => s.toLowerCase() + '@trade').join('/'));
+    WS = sock;
+    sock.onopen = () => { WS_OK = true; WS_TRY = 0; };
+    sock.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      const d = m && m.data; if (!d || d.e !== 'trade') return;
+      const p = +d.p, q = PRICES[d.s] || (PRICES[d.s] = {p: p, ch: 0});
+      q.dir = p > q.p ? 1 : p < q.p ? -1 : (q.dir || 0);
+      q.p = p; q.tick = Date.now(); WS_LAST = q.tick; WS_DIRTY = true;
+      if (d.s === CH_SYM && CH_DATA && CH_DATA.length) { CH_DATA[CH_DATA.length - 1] = p; WS_CH_DIRTY = true; }
+    };
+    sock.onerror = () => { try { sock.close(); } catch (e) {} };
+    sock.onclose = () => {
+      if (WS !== sock) return;
+      WS_OK = false;
+      WS_TRY++;
+      setTimeout(connectWS, Math.min(30000, 1000 * Math.pow(2, Math.min(WS_TRY, 5))));
+    };
+  } catch (e) { WS_OK = false; }
+}
+
+setInterval(() => {
+  if (document.hidden) return;
+  if (WS_DIRTY || Date.now() - WS_LAST < 1000) { WS_DIRTY = false; paintTicks(); }
+}, 250);
+setInterval(() => { if (!document.hidden && WS_CH_DIRTY) { WS_CH_DIRTY = false; paintChart(); } }, 1000);
+setInterval(() => { if (!document.hidden && WS_OK) paintSentiment(); }, 2000);
+
+/* ---------- price chart with trend and overbought/oversold (own calculation) ---------- */
+let CH_SYM = 'BTCUSDT', CH_TF = '1h', CH_DATA = null, CH_ERR = false;
+const TFS = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'];
+
+function emaArr(v, n) { const k = 2 / (n + 1); let e = null; return v.map((x, i) => { e = e === null ? x : x * k + e * (1 - k); return i >= n - 1 ? e : null; }); }
+function rsiLast(c, n = 14) {
+  if (c.length <= n) return null;
+  let g = 0, l = 0;
+  for (let i = 1; i <= n; i++) { const d = c[i] - c[i - 1]; g += Math.max(d, 0); l += Math.max(-d, 0); }
+  g /= n; l /= n;
+  for (let i = n + 1; i < c.length; i++) { const d = c[i] - c[i - 1]; g = (g * (n - 1) + Math.max(d, 0)) / n; l = (l * (n - 1) + Math.max(-d, 0)) / n; }
+  return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+}
+
+function paintChart() {
+  const chips = `<div class="chips">${WATCH.map((s) => `<button data-sym="${s}" class="${s === CH_SYM ? 'on' : ''}">${s.replace('USDT', '')}</button>`).join('')}</div>
+    <div class="chips">${TFS.map((t) => `<button data-tf="${t}" class="${t === CH_TF ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  let body = '<p class="dim">Loading chart…</p>';
+  if (CH_ERR && !CH_DATA) body = '<p class="err">Cannot reach the price feed, retrying.</p>';
+  if (CH_DATA) {
+    const c = CH_DATA, e20 = emaArr(c, 20), e50 = emaArr(c, 50), last = c[c.length - 1];
+    const vals = c.concat(e20.filter((x) => x !== null), e50.filter((x) => x !== null));
+    const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+    const line = (a) => a.map((y, i) => y === null ? null : `${(i / (a.length - 1)) * 300},${130 - ((y - min) / span) * 120}`).filter(Boolean).join(' ');
+    const up = last >= c[0], r = rsiLast(c);
+    const a20 = e20[e20.length - 1], a50 = e50[e50.length - 1];
+    let trend = 'Sideways';
+    if (a20 !== null && a50 !== null) trend = a20 > a50 && last > a20 ? 'Uptrend' : a20 < a50 && last < a20 ? 'Downtrend' : 'Mixed';
+    const str = a20 !== null && a50 !== null ? (Math.abs(a20 - a50) / last * 100).toFixed(2) + '%' : '-';
+    const zone = r === null ? '-' : r >= 70 ? 'Overbought' : r <= 30 ? 'Oversold' : 'Neutral';
+    body = `<svg viewBox="0 0 300 140" preserveAspectRatio="none" role="img" aria-label="${esc(CH_SYM)} price chart">
+        <polyline points="${line(e50)}" fill="none" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+        <polyline points="${line(e20)}" fill="none" stroke="#fbbf24" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+        <polyline points="${line(c)}" fill="none" stroke="${up ? '#34d399' : '#f87171'}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+      <div class="row dim"><span>${px(min)}</span><span>${px(max)}</span></div>
+      <div class="key dim"><span style="color:${up ? '#34d399' : '#f87171'}">Price</span><span style="color:#fbbf24">EMA 20</span><span style="color:#38bdf8">EMA 50</span></div>
+      <div class="row"><span>Trend</span><span class="${trend === 'Uptrend' ? 'up' : trend === 'Downtrend' ? 'down' : ''}">${trend} <span class="dim">(gap ${str})</span></span></div>
+      <div class="row"><span>RSI 14</span><span class="${zone === 'Overbought' ? 'down' : zone === 'Oversold' ? 'up' : ''}">${r === null ? '-' : r.toFixed(0)} <span class="dim">${zone}</span></span></div>
+      <div class="warn">My own simple calculation from Binance prices (last 120 candles). It is not MarketMilk data and not advice.</div>`;
+  }
+  $('#chartBox').innerHTML = chips + body;
+}
+
+async function pullChart() {
+  if (document.hidden) return;
+  try {
+    const url = `https://data-api.binance.vision/api/v3/klines?symbol=${CH_SYM}&interval=${CH_TF}&limit=120`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    CH_DATA = (await res.json()).map((k) => +k[4]); CH_ERR = false;
+  } catch (e) { CH_ERR = true; }
+  paintChart();
+}
+
+$('#chartBox').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.sym) CH_SYM = b.dataset.sym;
+  if (b.dataset.tf) CH_TF = b.dataset.tf;
+  CH_DATA = null; paintChart(); pullChart();
+});
+
+/* ---------- market sentiment ---------- */
+let FNG = null, FNG_ERR = false;
+
+async function pullSentiment() {
+  try {
+    const res = await fetch('https://api.alternative.me/fng/?limit=30');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    FNG = j.data.map((x) => ({v: +x.value, label: x.value_classification, ts: +x.timestamp}));   // newest first
+    FNG_ERR = false;
+  } catch (e) { FNG_ERR = true; }
+  paintSentiment();
+}
+
+function paintSentiment() {
+  const box = $('#sentiment');
+  const qs = WATCH.filter((s) => PRICES[s]).map((s) => PRICES[s]);
+  const mq = MEMES.filter((s) => PRICES[s]).map((s) => PRICES[s]);
+  const avgOf = (a) => a.reduce((s, q) => s + q.ch, 0) / a.length;
+  let breadth = '<p class="dim">Live mood appears once prices load.</p>';
+  if (qs.length) {
+    const ups = qs.filter((q) => q.ch >= 0).length, avg = avgOf(qs);
+    const score = Math.round(0.5 * (100 * ups / qs.length) + 0.5 * Math.max(0, Math.min(100, 50 + avg * 5)));
+    const mood = score >= 75 ? 'Very bullish' : score >= 60 ? 'Bullish' : score > 40 ? 'Neutral' : score > 25 ? 'Bearish' : 'Very bearish';
+    const mcol = score >= 60 ? 'up' : score <= 40 ? 'down' : '';
+    breadth = `<div class="dim">Live mood right now, from the last 24h moves of ${qs.length} coins (updates every 5s)</div>
+      <div class="gauge ${mcol}">${score} <span style="font-size:16px">${mood}</span></div>
+      <div class="row"><span>All coins<br><span class="dim">${ups} of ${qs.length} up in 24h</span></span><span class="${cls(avg)}">${avg >= 0 ? '+' : ''}${avg.toFixed(2)}% avg</span></div>` +
+      (mq.length ? `<div class="row"><span>Meme coins<br><span class="dim">${mq.filter((q) => q.ch >= 0).length} of ${mq.length} up in 24h</span></span><span class="${cls(avgOf(mq))}">${avgOf(mq) >= 0 ? '+' : ''}${avgOf(mq).toFixed(2)}% avg</span></div>` : '');
+  }
+  let fng = FNG_ERR ? '<p class="err">Cannot reach the Fear &amp; Greed feed, retrying.</p>' : '<p class="dim">Loading Fear &amp; Greed…</p>';
+  if (FNG && FNG.length) {
+    const now = FNG[0], at = (i) => (FNG[i] ? FNG[i].v : null);
+    const col = now.v >= 55 ? 'up' : now.v <= 45 ? 'down' : '';
+    const chron = FNG.slice().reverse().map((x) => x.v);
+    const pts = chron.map((y, i) => `${(i / Math.max(chron.length - 1, 1)) * 300},${100 - y}`).join(' ');
+    const cmp = (label, i) => at(i) === null ? '' : `<div class="row"><span class="dim">${label}</span><span>${at(i)}</span></div>`;
+    const dateTxt = now.ts ? new Date(now.ts * 1000).toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short'}) : 'today';
+    fng = `<div class="dim">Crypto Fear &amp; Greed index, reading for ${esc(dateTxt)} (0 = extreme fear, 100 = extreme greed). It updates once a day.</div>
+      <div class="gauge ${col}">${now.v} <span style="font-size:16px">${esc(now.label)}</span></div>
+      <svg viewBox="0 0 300 100" preserveAspectRatio="none" role="img" aria-label="Fear and Greed, last 30 days" style="height:80px">
+        <line x1="0" y1="50" x2="300" y2="50" stroke="#334155" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
+        <polyline points="${pts}" fill="none" stroke="#38bdf8" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+      <div class="dim">Last 30 days</div>
+      ${cmp('Yesterday', 1)}${cmp('A week ago', 7)}${cmp('A month ago', 29)}`;
+  }
+  box.innerHTML = breadth + '<div style="height:12px"></div>' + fng + '<div class="warn">Sentiment shows the crowd mood, not where price goes next. The live mood is my own simple calculation from Binance 24h moves. The Fear &amp; Greed index comes from alternative.me, crypto only.</div>';
+}
+
+/* ---------- learning tab ---------- */
+const LESSONS = [
+  ['paper', 'Paper trading: practice with fake money',
+   `<p>Paper trading runs a strategy on real prices without risking real money. It is how this bot tests ideas.</p>
+    <ul><li>Few trades prove nothing. Luck dominates short runs, so wait for dozens of trades.</li>
+    <li>Real trading adds fees, slippage and nerves that paper trading hides.</li></ul>`],
+  ['candles', 'Candles and timeframes',
+   `<p>A candle shows one period of trading: open, high, low and close. The chart's timeframe sets how long each candle is.</p>
+    <ul><li>1m is one minute per candle, 1h is one hour, 1d is one day.</li>
+    <li>Lower timeframes move more but are noisier and have more false signals. Higher ones are slower and steadier.</li></ul>`],
+  ['trend', 'Trend and moving averages (EMA)',
+   `<p>An EMA is an average of recent prices that weights the newest ones most. The chart shows EMA 20 (faster) and EMA 50 (slower).</p>
+    <ul><li>Price above EMA 20, and EMA 20 above EMA 50, is called an uptrend. The reverse is a downtrend.</li>
+    <li>Moving averages lag. In a sideways market they cross back and forth and give false signals.</li></ul>`],
+  ['rsi', 'RSI: overbought and oversold',
+   `<p>RSI (0 to 100) compares recent gains with recent losses. Above 70 is called overbought, below 30 oversold.</p>
+    <ul><li>It is not a sell or buy signal alone. In a strong trend RSI can stay above 70 for a long time.</li>
+    <li>It works best as a warning that a move is stretched, together with other signs.</li></ul>`],
+  ['bb', 'Bollinger Bands',
+   `<p>Bollinger Bands are an average line (20 periods) with an upper and lower band 2 standard deviations away. Price outside a band means it is stretched.</p>
+    <ul><li>Mean-reversion strategies bet price returns toward the middle line. Your RSI + Bollinger strategy does this.</li>
+    <li>In a strong trend price can walk along a band, and reversal trades lose.</li></ul>`],
+  ['risk', 'Stop loss, take profit and risk per trade',
+   `<p>A stop loss closes a losing trade at a set price. A take profit closes a winner at a set price. The bot risks 1% of the account per trade.</p>
+    <ul><li>Size = money you accept losing / distance to the stop. Risking $10 with a stop 2% away gives a $500 position.</li>
+    <li>Reward to risk matters. Winning 40% of trades at 2:1 reward to risk still comes out positive before fees.</li></ul>`],
+  ['fng', 'Reading Fear & Greed',
+   `<p>The index mixes things like volatility, price momentum, social media activity and Bitcoin dominance into one number from 0 to 100.</p>
+    <ul><li>Extreme fear has sometimes come near bottoms and extreme greed near tops, but it can last for weeks.</li>
+    <li>Use it as context for how crowded the mood is, never as a signal on its own.</li></ul>`],
+  ['results', 'Reading the bot results',
+   `<ul><li><b>Profit factor</b> = total profits divided by total losses. Above 1 is profitable.</li>
+    <li><b>Win rate</b> alone says little. A 35% win rate can be profitable and a 70% one can lose money.</li>
+    <li><b>Backtest vs live paper:</b> backtests look better than live results because strategies get tuned to old data (overfitting).</li>
+    <li><b>Sample size:</b> look at 30 or more trades before drawing a conclusion.</li></ul>`],
+  ['sessions', 'Market sessions',
+   `<p>Forex trades around the clock on weekdays in four overlapping sessions: Sydney, Tokyo, London and New York. The London and New York overlap is usually the busiest.</p>
+    <ul><li>Forex closes for the weekend. Crypto and Deriv synthetics stay open 24/7.</li>
+    <li>Crypto is often quieter on weekends, so signals can behave differently.</li></ul>`],
+];
+
+function learned() { try { return JSON.parse(localStorage.getItem('learned') || '[]'); } catch (e) { return []; } }
+function saveLearned(a) { try { localStorage.setItem('learned', JSON.stringify(a)); } catch (e) {} }
+
+function paintLearn() {
+  const done = learned(), pct = Math.round((done.length / LESSONS.length) * 100);
+  const open = (() => { try { return localStorage.getItem('lessonOpen') || ''; } catch (e) { return ''; } })();
+  $('#learn').innerHTML = `<h2>Learn the basics</h2>
+    <div class="dim">${done.length} of ${LESSONS.length} lessons done</div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    ${LESSONS.map(([id, title, body]) => `<details data-id="${id}" class="${done.includes(id) ? 'done' : ''}" ${open === id ? 'open' : ''}>
+      <summary>${esc(title)}</summary><div class="body">${body}
+      <label><input type="checkbox" data-done="${id}" ${done.includes(id) ? 'checked' : ''}> I understand this</label></div></details>`).join('')}
+    <div class="warn">Education only, not financial advice. Trading can lose money.</div>`;
+}
+
+$('#learn').addEventListener('change', (ev) => {
+  const id = ev.target && ev.target.dataset && ev.target.dataset.done; if (!id) return;
+  let a = learned().filter((x) => x !== id); if (ev.target.checked) a.push(id);
+  saveLearned(a); paintLearn();
+});
+$('#learn').addEventListener('toggle', (ev) => {
+  const d = ev.target; if (!d || !d.dataset || !d.dataset.id || !d.open) return;
+  try { localStorage.setItem('lessonOpen', d.dataset.id); } catch (e) {}
+}, true);
+
+/* ---------- practice trading with fake money (uses the live prices above) ---------- */
+const SIM_FEE = 0.001, SIM_SLIP = 0.0005, SIM_START = 1000;   // 0.1% fee and 0.05% slippage on every buy and sell
+const simLive = (qty, p) => qty * p * (1 - SIM_SLIP) * (1 - SIM_FEE);   // what a position would really fetch if sold now
+function simFresh() { return {cash: SIM_START, start: SIM_START, pos: {}, hist: [], eq: [[Date.now(), SIM_START]]}; }
+function simLoad() {
+  try {
+    const j = JSON.parse(localStorage.getItem('sim') || 'null');
+    if (j && typeof j.cash === 'number' && j.pos && Array.isArray(j.hist)) { if (!Array.isArray(j.eq)) j.eq = [[Date.now(), j.start || SIM_START]]; return j; }
+  } catch (e) {}
+  return simFresh();
+}
+let SIM_CH = null;   // recent 1-minute closes of the selected coin, for the practice chart
+function simRecord() {   // remember account value over time for the account chart
+  const v = simEquity(), last = SIM.eq[SIM.eq.length - 1];
+  if (last && Math.abs(last[1] - v) < 0.005 && Date.now() - last[0] < 60000) return;
+  SIM.eq.push([Date.now(), v]); if (SIM.eq.length > 400) SIM.eq = SIM.eq.slice(-400); simSave();
+}
+function simLine(vals, ref, up, fmt) {
+  if (vals.length < 2) return '<p class="dim">The chart appears after a little more data.</p>';
+  const all = ref === null ? vals : vals.concat([ref]);
+  const min = Math.min(...all), max = Math.max(...all), span = max - min || 1, y = (v) => 110 - ((v - min) / span) * 100;
+  const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * 300},${y(v)}`).join(' ');
+  return `<svg viewBox="0 0 300 120" preserveAspectRatio="none" role="img" aria-label="chart">` +
+    (ref === null ? '' : `<line x1="0" y1="${y(ref)}" x2="300" y2="${y(ref)}" stroke="#94a3b8" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`) +
+    `<polyline points="${pts}" fill="none" stroke="${up ? '#34d399' : '#f87171'}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    <div class="row dim"><span>${fmt(min)}</span><span>${fmt(max)}</span></div>`;
+}
+async function simPull() {
+  if (document.hidden || $('#tab-practice').hidden) return;
+  const sym = SIM_SYM;
+  try {
+    const res = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1m&limit=60`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = (await res.json()).map((k) => +k[4]);
+    if (sym === SIM_SYM) SIM_CH = d;
+  } catch (e) {}
+  paintSim();
+}
+function simSave() { try { localStorage.setItem('sim', JSON.stringify(SIM)); } catch (e) {} }
+let SIM = simLoad(), SIM_SYM = 'BTCUSDT', SIM_MSG = '', SIM_ARMED = false;
+const simPrice = (s) => (PRICES[s] ? PRICES[s].p : null);
+const usd = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+const qtyTxt = (q) => (q >= 100 ? q.toLocaleString(undefined, {maximumFractionDigits:2}) : q.toPrecision(4));
+
+function simEquity() {
+  let e = SIM.cash;
+  for (const s in SIM.pos) { const p = simPrice(s), x = SIM.pos[s]; e += p === null ? x.cost : simLive(x.qty, p); }
+  return e;
+}
+function simSay(m) { SIM_MSG = m; }
+
+function simBuy(amount) {
+  const p = simPrice(SIM_SYM);
+  if (!(amount > 0)) return simSay('Enter an amount above 0.');
+  if (amount > SIM.cash + 1e-9) return simSay('Not enough fake cash. You have ' + usd(SIM.cash) + '.');
+  if (p === null) return simSay('No live price yet, wait a second.');
+  const fill = p * (1 + SIM_SLIP);   // you pay slightly above the shown price
+  const qty = amount * (1 - SIM_FEE) / fill, pos = SIM.pos[SIM_SYM] || (SIM.pos[SIM_SYM] = {qty: 0, cost: 0});
+  pos.qty += qty; pos.cost += amount; SIM.cash -= amount;
+  SIM.hist.unshift({t: Date.now(), sym: SIM_SYM, side: 'buy', usd: amount, qty: qty, price: fill, pnl: null});
+  SIM.hist = SIM.hist.slice(0, 50); simSave(); simRecord();
+  simSay('Bought ' + qtyTxt(qty) + ' ' + SIM_SYM.replace('USDT', '') + ' at ' + px(fill) + ' (live price ' + px(p) + ', fee ' + usd(amount * SIM_FEE) + ').');
+}
+
+function simSell(sym, frac) {
+  const pos = SIM.pos[sym], p = simPrice(sym);
+  if (!pos) return simSay('You do not hold that coin.');
+  if (p === null) return simSay('No live price yet, wait a second.');
+  const f = Math.min(1, Math.max(0, frac)), qty = pos.qty * f, cost = pos.cost * f;
+  const fill = p * (1 - SIM_SLIP);   // you receive slightly below the shown price
+  const proceeds = qty * fill * (1 - SIM_FEE), pnl = proceeds - cost;
+  SIM.cash += proceeds;
+  if (f >= 0.999999) delete SIM.pos[sym]; else { pos.qty -= qty; pos.cost -= cost; }
+  SIM.hist.unshift({t: Date.now(), sym: sym, side: 'sell', usd: proceeds, qty: qty, price: fill, pnl: pnl});
+  SIM.hist = SIM.hist.slice(0, 50); simSave(); simRecord();
+  simSay('Sold ' + qtyTxt(qty) + ' ' + sym.replace('USDT', '') + ' at ' + px(fill) + ' (live price ' + px(p) + '). Result ' + (pnl >= 0 ? '+' : '') + usd(pnl) + ' after fees.');
+}
+
+function paintSimForm() {
+  $('#simForm').innerHTML = `<div class="chips" id="simCoins">${WATCH.map((s) => `<button data-simsym="${s}">${esc(s.replace('USDT', ''))}</button>`).join('')}</div>
+    <div id="simPrice"><p class="dim">Loading chart…</p></div>
+    <div class="row"><span>Live price</span><span id="simPx">-</span></div>
+    <label class="dim" for="simAmt">Amount to spend (USD)</label>
+    <input id="simAmt" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 100">
+    <div class="chips"><button data-q="0.25">25% of cash</button><button data-q="0.5">50%</button><button data-q="1">All cash</button></div>
+    <div class="dim" id="simEst"></div>
+    <button class="act buy" data-act="buy">Buy at live price</button>
+    <div class="warn" id="simMsg" hidden></div>`;
+}
+
+function paintSim() {
+  const eq = simEquity(), pct = (eq / SIM.start - 1) * 100;
+  $('#simTop').innerHTML = `<div class="dim">Fake account value</div><div class="big ${cls(eq - SIM.start)}">${usd(eq)}</div>
+    <div class="dim">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% since start (${usd(SIM.start)}) · cash ${usd(SIM.cash)}</div>`;
+  document.querySelectorAll('#simCoins button').forEach((b) => b.classList.toggle('on', b.dataset.simsym === SIM_SYM));
+  const p = simPrice(SIM_SYM), amt = parseFloat(($('#simAmt') || {}).value);
+  const eqVals = SIM.eq.map((r) => r[1]).concat([eq]);
+  $('#simEqChart').innerHTML = simLine(eqVals, SIM.start, eq >= SIM.start, usd) + '<div class="dim">Dashed line = your starting balance.</div>';
+  if (SIM_CH) {
+    const vals = SIM_CH.slice(); if (p !== null) vals[vals.length - 1] = p;
+    const x = SIM.pos[SIM_SYM], entry = x ? x.cost * (1 - SIM_FEE) / x.qty : null;
+    $('#simPrice').innerHTML = `<div class="dim">${esc(SIM_SYM.replace('USDT', ''))} last 60 minutes${entry === null ? '' : ' · dashed line = your average buy price ' + px(entry)}</div>` +
+      simLine(vals, entry, vals[vals.length - 1] >= vals[0], px);
+  } else { $('#simPrice').innerHTML = '<p class="dim">Loading chart…</p>'; }
+  $('#simPx').textContent = p === null ? 'waiting for price…' : px(p) + ' USDT';
+  $('#simEst').textContent = p !== null && amt > 0 ? 'You would get about ' + qtyTxt(amt * (1 - SIM_FEE) / (p * (1 + SIM_SLIP))) + ' ' + SIM_SYM.replace('USDT', '') + ' after a 0.1% fee and 0.05% slippage.' : '';
+  const msg = $('#simMsg'); msg.textContent = SIM_MSG; msg.hidden = !SIM_MSG;
+  const syms = Object.keys(SIM.pos);
+  $('#simPos').innerHTML = syms.length ? syms.map((s) => {
+    const x = SIM.pos[s], pr = simPrice(s), val = pr === null ? x.cost : simLive(x.qty, pr), pnl = val - x.cost;
+    return `<div class="row"><span>${esc(s.replace('USDT', ''))} <span class="dim">${qtyTxt(x.qty)} coins · cost ${usd(x.cost)}</span><br>
+      <button class="mini sell" data-sell="${s}" data-frac="0.5">Sell 50%</button><button class="mini sell" data-sell="${s}" data-frac="1">Sell all</button></span>
+      <span class="${cls(pnl)}">${usd(val)}<br><span class="dim ${cls(pnl)}">${pnl >= 0 ? '+' : ''}${usd(pnl)} (${(pnl / x.cost * 100).toFixed(2)}%)</span></span></div>`;
+  }).join('') : '<p class="dim">No positions. Buy something to start.</p>';
+  $('#simHist').innerHTML = SIM.hist.length ? SIM.hist.slice(0, 15).map((h) =>
+    `<div class="row"><span>${h.side === 'buy' ? 'Bought' : 'Sold'} ${esc(h.sym.replace('USDT', ''))}<br><span class="dim">${qtyTxt(h.qty)} at ${px(h.price)} · ${esc(when(new Date(h.t).toISOString()))}</span></span><span class="${h.pnl === null ? '' : cls(h.pnl)}">${h.pnl === null ? usd(h.usd) : (h.pnl >= 0 ? '+' : '') + usd(h.pnl)}</span></div>`).join('') : '<p class="dim">No trades yet.</p>';
+}
+
+$('#tab-practice').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.simsym) { SIM_SYM = b.dataset.simsym; SIM_MSG = ''; SIM_CH = null; simPull(); }
+  else if (b.dataset.q) { $('#simAmt').value = String(Math.floor(SIM.cash * +b.dataset.q * 100) / 100); }
+  else if (b.dataset.act === 'buy') simBuy(parseFloat($('#simAmt').value));
+  else if (b.dataset.sell) simSell(b.dataset.sell, +b.dataset.frac);
+  else if (b.id === 'simReset') {
+    if (!SIM_ARMED) {
+      SIM_ARMED = true; b.textContent = 'Tap again to reset to ' + usd(SIM_START);
+      setTimeout(() => { SIM_ARMED = false; b.textContent = 'Reset fake balance'; }, 4000);
+    } else { SIM = simFresh(); simSave(); SIM_MSG = 'Fake balance reset.'; SIM_ARMED = false; b.textContent = 'Reset fake balance'; }
+  }
+  paintSim();
+});
+$('#tab-practice').addEventListener('input', () => paintSim());
+
+/* ---------- tabs ---------- */
+function showTab(name) {
+  ['markets', 'practice', 'bot', 'learn'].forEach((t) => { $('#tab-' + t).hidden = t !== name; });
+  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  try { localStorage.setItem('tab', name); } catch (e) {}
+  if (name === 'practice') { simPull(); paintSim(); }
+}
+$('.tabs').addEventListener('click', (ev) => { const b = ev.target.closest('button'); if (b && b.dataset.tab) showTab(b.dataset.tab); });
+
+/* ---------- bot data: read straight from GitHub so it is fresh even if the website is not rebuilt ---------- */
+async function getData(name) {
+  const urls = [], m = location.hostname.match(/^([^.]+)\.github\.io$/), repo = location.pathname.split('/')[1];
+  if (m && repo) urls.push(`https://raw.githubusercontent.com/${m[1]}/${repo}/main/docs/data/${name}?t=${Date.now()}`);
+  urls.push('data/' + name + '?t=' + Date.now());
+  for (const u of urls) { try { const r = await fetch(u, {cache: 'no-store'}); if (r.ok) return r; } catch (e) {} }
+  return null;
+}
+
+/* ---------- USDJPY demo forward test (read from docs/data/jpy_trades.csv) ---------- */
+async function loadJpy() {
+  const box = $('#jpy');
+  let rows = [];
+  try {
+    const res = await getData('jpy_trades.csv');
+    if (res) rows = (await res.text()).trim().split(/\r?\n/).slice(1).map((l) => l.split(',')).filter((r) => r.length >= 6);
+  } catch (e) {}
+  const done = rows.filter((r) => ['won', 'lost', 'sold'].includes(r[4]));
+  const wins = done.filter((r) => r[4] === 'won').length;
+  const net = done.reduce((a, r) => a + (parseFloat(r[5]) || 0), 0);
+  const open = rows.filter((r) => r[4] === 'open').length;
+  const list = rows.slice().reverse().slice(0, 15).map((r) => {
+    const p = parseFloat(r[5]);
+    return `<div class="row"><span>${esc(r[0])}<br><span class="dim">${esc(r[4])} · stake ${esc(r[2])}</span></span><span class="${isNaN(p) ? 'dim' : cls(p)}">${isNaN(p) ? 'open' : signed(p)}</span></div>`;
+  }).join('');
+  box.innerHTML = `<h2>USDJPY demo forward test</h2><div class="card">
+    ${rows.length ? `<div class="big ${cls(net)}">${signed(net)}</div>
+      <div class="dim">${done.length} closed · ${wins} won${done.length ? ' (' + Math.round(100 * wins / done.length) + '%)' : ''} · ${open} open</div>${list}`
+      : '<p class="dim">No trades yet. The bot places one demo Fall contract on weekdays at 19:00 UTC (22:00 Nairobi) and fills in results the next morning.</p>'}
+    <div class="warn">Demo account only, no real money. Judge it after at least 30 trades, not before.</div></div>`;
+}
+
+async function load() {
+  try {
+    const res = await getData('report.json');
+    if (!res) throw new Error('no report');
+    REPORT = await res.json();
+    render(REPORT);
+    paintLive();
+  } catch (e) {
+    $('#app').innerHTML = '<div class="card"><p>No report yet.</p><p class="dim">The first one appears after the bot runs for the first time (GitHub: Actions tab, run "nightly-bot" manually to start now).</p></div>';
+  }
+}
+$('#refresh').onclick = () => { load(); loadJpy(); pull(); };
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { load(); pull(); } });
+paintLive();
+paintChart();
+paintLearn();
+paintSimForm();
+paintSim();
+setInterval(() => { if (!document.hidden && !$('#tab-practice').hidden) paintSim(); }, 500);
+setInterval(() => { if (!document.hidden && !$('#tab-practice').hidden) { simPull(); simRecord(); } }, 15000);
+try { const t = localStorage.getItem('tab'); if (t) showTab(t); } catch (e) {}
+load();
+loadJpy();
+pull();
+pullChart();
+pullSentiment();
+connectWS();
+setInterval(pull, 5000);
+setInterval(pullChart, 20000);
+setInterval(pullSentiment, 600000);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
